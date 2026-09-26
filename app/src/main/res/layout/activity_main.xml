@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Сетка как EXSapoCentral. LinearLayout — ConstraintLayout на IHU схлопывается. -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background"
+    android:orientation="vertical"
+    tools:context=".MainActivity"
+    tools:theme="@style/Theme.VoiceApp">
+
+    <!-- Верхняя полоса статуса как у Sapo -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="36dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp">
+
+        <ImageView android:layout_width="14dp" android:layout_height="14dp" android:contentDescription="@null" android:src="@drawable/ic_status_storage" />
+        <TextView android:id="@+id/status_storage" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:text="— ГБ" android:textColor="@color/text_secondary" android:textSize="12sp" />
+        <ImageView android:layout_width="14dp" android:layout_height="14dp" android:layout_marginStart="16dp" android:contentDescription="@null" android:src="@drawable/ic_status_battery" />
+        <TextView android:id="@+id/status_battery" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:text="—%" android:textColor="@color/text_secondary" android:textSize="12sp" />
+        <ImageView android:layout_width="14dp" android:layout_height="14dp" android:layout_marginStart="16dp" android:contentDescription="@null" android:src="@drawable/ic_status_voltage" />
+        <TextView android:id="@+id/status_voltage" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:text="— V" android:textColor="@color/text_secondary" android:textSize="12sp" />
+        <ImageView android:layout_width="14dp" android:layout_height="14dp" android:layout_marginStart="16dp" android:contentDescription="@null" android:src="@drawable/ic_status_wifi" />
+        <TextView android:id="@+id/status_wifi" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:text="Wi-Fi" android:textColor="@color/text_secondary" android:textSize="12sp" />
+        <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+        <ImageView android:id="@+id/status_dot" android:layout_width="8dp" android:layout_height="8dp" android:contentDescription="@null" android:src="@drawable/ic_status_dot" android:visibility="gone" tools:visibility="visible" />
+        <TextView
+            android:id="@+id/status_pill"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:text="Загрузка"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            tools:text="Подключено к машине"
+            tools:textColor="@color/status_ok" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/loading_layout"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="visible"
+        tools:visibility="gone">
+
+        <ProgressBar android:id="@+id/loading_progress" android:layout_width="wrap_content" android:layout_height="wrap_content" android:indeterminate="true" />
+        <TextView android:id="@+id/loading_text" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="Загрузка голосового ассистента..." android:textColor="@color/text_primary" android:textSize="18sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/main_content"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <!-- Сайдбар -->
+        <LinearLayout
+            android:layout_width="200dp"
+            android:layout_height="match_parent"
+            android:background="@drawable/bg_rail"
+            android:orientation="vertical"
+            android:paddingTop="4dp"
+            android:paddingBottom="8dp">
+
+            <TextView android:id="@+id/nav_home" android:layout_width="match_parent" android:layout_height="44dp" android:background="@drawable/bg_nav_on" android:clickable="true" android:drawableStart="@drawable/ic_nav_home" android:drawablePadding="12dp" android:drawableTint="@color/text_primary" android:focusable="true" android:gravity="center_vertical" android:paddingStart="16dp" android:paddingEnd="8dp" android:text="Главная" android:textColor="@color/text_primary" android:textSize="15sp" />
+            <TextView android:id="@+id/nav_voice" android:layout_width="match_parent" android:layout_height="44dp" android:background="@drawable/bg_nav_off" android:clickable="true" android:drawableStart="@drawable/ic_nav_mic" android:drawablePadding="12dp" android:drawableTint="@color/text_secondary" android:focusable="true" android:gravity="center_vertical" android:paddingStart="16dp" android:paddingEnd="8dp" android:text="Голос" android:textColor="@color/text_secondary" android:textSize="15sp" />
+            <TextView android:id="@+id/nav_tools" android:layout_width="match_parent" android:layout_height="44dp" android:background="@drawable/bg_nav_off" android:clickable="true" android:drawableStart="@drawable/ic_nav_tools" android:drawablePadding="12dp" android:drawableTint="@color/text_secondary" android:focusable="true" android:gravity="center_vertical" android:paddingStart="16dp" android:paddingEnd="8dp" android:text="Инструменты" android:textColor="@color/text_secondary" android:textSize="15sp" />
+            <TextView android:id="@+id/nav_net" android:layout_width="match_parent" android:layout_height="44dp" android:background="@drawable/bg_nav_off" android:clickable="true" android:drawableStart="@drawable/ic_nav_net" android:drawablePadding="12dp" android:drawableTint="@color/text_secondary" android:focusable="true" android:gravity="center_vertical" android:paddingStart="16dp" android:paddingEnd="8dp" android:text="Сеть и Auto" android:textColor="@color/text_secondary" android:textSize="15sp" />
+            <TextView android:id="@+id/nav_audio" android:layout_width="match_parent" android:layout_height="44dp" android:background="@drawable/bg_nav_off" android:clickable="true" android:drawableStart="@drawable/ic_nav_audio" android:drawablePadding="12dp" android:drawableTint="@color/text_secondary" android:focusable="true" android:gravity="center_vertical" android:paddingStart="16dp" android:paddingEnd="8dp" android:text="Аудио" android:textColor="@color/text_secondary" android:textSize="15sp" />
+            <TextView android:id="@+id/nav_apps" android:layout_width="match_parent" android:layout_height="44dp" android:background="@drawable/bg_nav_off" android:clickable="true" android:drawableStart="@drawable/ic_nav_apps" android:drawablePadding="12dp" android:drawableTint="@color/text_secondary" android:focusable="true" android:gravity="center_vertical" android:paddingStart="16dp" android:paddingEnd="8dp" android:text="Приложения" android:textColor="@color/text_secondary" android:textSize="15sp" />
+            <TextView android:id="@+id/nav_quick" android:layout_width="match_parent" android:layout_height="44dp" android:background="@drawable/bg_nav_off" android:clickable="true" android:drawableStart="@drawable/ic_nav_quick" android:drawablePadding="12dp" android:drawableTint="@color/text_secondary" android:focusable="true" android:gravity="center_vertical" android:paddingStart="16dp" android:paddingEnd="8dp" android:text="Быстрые действия" android:textColor="@color/text_secondary" android:textSize="15sp" />
+            <TextView android:id="@+id/nav_settings" android:layout_width="match_parent" android:layout_height="44dp" android:background="@drawable/bg_nav_off" android:clickable="true" android:drawableStart="@drawable/ic_nav_settings" android:drawablePadding="12dp" android:drawableTint="@color/text_secondary" android:focusable="true" android:gravity="center_vertical" android:paddingStart="16dp" android:paddingEnd="8dp" android:text="Настройки" android:textColor="@color/text_secondary" android:textSize="15sp" />
+            <TextView android:id="@+id/nav_about" android:layout_width="match_parent" android:layout_height="44dp" android:background="@drawable/bg_nav_off" android:clickable="true" android:drawableStart="@drawable/ic_nav_about" android:drawablePadding="12dp" android:drawableTint="@color/text_secondary" android:focusable="true" android:gravity="center_vertical" android:paddingStart="16dp" android:paddingEnd="8dp" android:text="О приложении" android:textColor="@color/text_secondary" android:textSize="15sp" />
+
+            <View android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" />
+            <TextView android:id="@+id/rail_version" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="18dp" android:text="Geely EX2" android:textColor="@color/hint" android:textSize="11sp" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:paddingStart="8dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="14dp"
+            android:paddingBottom="10dp">
+
+            <!-- Главная — как Sapo: машина слева, телефон справа -->
+            <LinearLayout
+                android:id="@+id/page_home"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical">
+
+                <TextView android:id="@+id/title_text" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Главная" android:textColor="@color/text_primary" android:textSize="26sp" android:textStyle="bold" />
+                <TextView android:id="@+id/home_status" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Всё готово к поездке." android:textColor="@color/text_secondary" android:textSize="14sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_marginTop="10dp"
+                    android:layout_weight="1"
+                    android:orientation="horizontal">
+
+                    <!-- Карточка движения -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="10dp"
+                        android:layout_weight="1.35"
+                        android:background="@drawable/bg_card"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+                            <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Движение" android:textColor="@color/text_primary" android:textSize="16sp" />
+                            <TextView android:id="@+id/color_pick" android:layout_width="wrap_content" android:layout_height="wrap_content" android:background="@drawable/bg_ghost" android:clickable="true" android:focusable="true" android:paddingStart="10dp" android:paddingTop="4dp" android:paddingEnd="10dp" android:paddingBottom="4dp" android:text="Выбрать цвет ▾" android:textColor="@color/text_secondary" android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <FrameLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="0dp"
+                            android:layout_marginTop="4dp"
+                            android:layout_weight="1">
+
+                            <ImageView
+                                android:id="@+id/car_image"
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:contentDescription="Geely EX2"
+                                android:scaleType="fitCenter"
+                                android:src="@drawable/car_ex2_white" />
+                        </FrameLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:orientation="horizontal">
+
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginEnd="8dp" android:layout_weight="1" android:orientation="vertical">
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Режим движения" android:textColor="@color/text_secondary" android:textSize="12sp" />
+                                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:orientation="horizontal">
+                                    <Button android:id="@+id/drive_eco" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="4dp" android:layout_weight="1" android:background="@drawable/bg_seg_off" android:stateListAnimator="@null" android:text="Эко" android:textAllCaps="false" android:textColor="@color/text_primary" android:textSize="13sp" />
+                                    <Button android:id="@+id/drive_comfort" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="4dp" android:layout_weight="1" android:background="@drawable/bg_seg_off" android:stateListAnimator="@null" android:text="Комфорт" android:textAllCaps="false" android:textColor="@color/text_primary" android:textSize="13sp" />
+                                    <Button android:id="@+id/drive_sport" android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:background="@drawable/bg_seg_off" android:stateListAnimator="@null" android:text="Спорт" android:textAllCaps="false" android:textColor="@color/text_primary" android:textSize="13sp" />
+                                </LinearLayout>
+                            </LinearLayout>
+
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Рекуперация" android:textColor="@color/text_secondary" android:textSize="12sp" />
+                                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:orientation="horizontal">
+                                    <Button android:id="@+id/recup_low" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="4dp" android:layout_weight="1" android:background="@drawable/bg_seg_off" android:stateListAnimator="@null" android:text="Низкая" android:textAllCaps="false" android:textColor="@color/text_primary" android:textSize="13sp" />
+                                    <Button android:id="@+id/recup_mid" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="4dp" android:layout_weight="1" android:background="@drawable/bg_seg_off" android:stateListAnimator="@null" android:text="Средняя" android:textAllCaps="false" android:textColor="@color/text_primary" android:textSize="13sp" />
+                                    <Button android:id="@+id/recup_high" android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:background="@drawable/bg_seg_off" android:stateListAnimator="@null" android:text="Высокая" android:textAllCaps="false" android:textColor="@color/text_primary" android:textSize="13sp" />
+                                </LinearLayout>
+                            </LinearLayout>
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <!-- Подключить телефон -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="0.85"
+                        android:background="@drawable/bg_card"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Подключить телефон" android:textColor="@color/text_primary" android:textSize="16sp" />
+
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:gravity="center_vertical" android:orientation="horizontal">
+                            <ImageView android:layout_width="28dp" android:layout_height="28dp" android:contentDescription="Android Auto" android:src="@drawable/ic_aa" />
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:layout_weight="1" android:orientation="vertical">
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Android Auto" android:textColor="@color/text_primary" android:textSize="15sp" />
+                                <TextView android:id="@+id/aa_status" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="—" android:textColor="@color/text_secondary" android:textSize="12sp" />
+                            </LinearLayout>
+                        </LinearLayout>
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:orientation="horizontal">
+                            <Button android:id="@+id/aa_off" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="8dp" android:layout_weight="1" android:background="@drawable/bg_button" android:stateListAnimator="@null" android:text="Выключить" android:textAllCaps="false" android:textColor="@color/seg_on_text" android:textSize="13sp" />
+                            <Button android:id="@+id/aa_restart" android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:background="@drawable/bg_ghost" android:stateListAnimator="@null" android:text="Перезапуск" android:textAllCaps="false" android:textColor="@color/text_primary" android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="22dp" android:gravity="center_vertical" android:orientation="horizontal">
+                            <ImageView android:layout_width="28dp" android:layout_height="28dp" android:contentDescription="CarPlay" android:src="@drawable/ic_carplay" />
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:layout_weight="1" android:orientation="vertical">
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="CarPlay" android:textColor="@color/text_primary" android:textSize="15sp" />
+                                <TextView android:id="@+id/carplay_status" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Не подключено" android:textColor="@color/text_secondary" android:textSize="12sp" />
+                            </LinearLayout>
+                        </LinearLayout>
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:orientation="horizontal">
+                            <Button android:id="@+id/carplay_off" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="8dp" android:layout_weight="1" android:background="@drawable/bg_button" android:stateListAnimator="@null" android:text="Выключить" android:textAllCaps="false" android:textColor="@color/seg_on_text" android:textSize="13sp" />
+                            <Button android:id="@+id/carplay_restart" android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:background="@drawable/bg_ghost" android:stateListAnimator="@null" android:text="Перезапуск" android:textAllCaps="false" android:textColor="@color/text_primary" android:textSize="13sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Голос -->
+            <LinearLayout
+                android:id="@+id/page_voice"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_marginEnd="10dp" android:layout_weight="1" android:background="@drawable/bg_card" android:orientation="vertical" android:padding="18dp">
+                    <FrameLayout android:layout_width="96dp" android:layout_height="96dp" android:layout_gravity="start" android:background="@drawable/bg_mic_glow">
+                        <ImageView android:id="@+id/mic_animation" android:layout_width="48dp" android:layout_height="48dp" android:layout_gravity="center" android:contentDescription="Микрофон" android:src="@drawable/ic_mic" />
+                    </FrameLayout>
+                    <TextView android:id="@+id/state_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Жду обращения" android:textColor="@color/text_primary" android:textSize="20sp" />
+                    <TextView android:id="@+id/phrase_chip" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:background="@drawable/bg_phrase" android:paddingStart="14dp" android:paddingTop="6dp" android:paddingEnd="14dp" android:paddingBottom="6dp" android:text="Привет джили" android:textColor="@color/text_primary" android:textSize="16sp" />
+                    <Button android:id="@+id/test_button" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="16dp" android:background="@drawable/bg_button" android:stateListAnimator="@null" android:text="Вызвать ассистента" android:textAllCaps="false" android:textColor="@color/seg_on_text" android:textSize="16sp" />
+                </LinearLayout>
+
+                <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:background="@drawable/bg_card" android:orientation="vertical" android:padding="18dp">
+                    <androidx.appcompat.widget.SwitchCompat android:id="@+id/wake_word_switch" android:layout_width="match_parent" android:layout_height="wrap_content" android:checked="true" android:minHeight="52dp" android:text="Активация голосом" android:textColor="@color/text_primary" android:textSize="18sp" />
+                    <TextView android:id="@+id/wake_word_hint" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Скажите «Привет джили» или нажмите кнопку на руле" android:textColor="@color/text_secondary" android:textSize="14sp" />
+                    <Button android:id="@+id/mic_restart_button" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="16dp" android:background="@drawable/bg_ghost" android:stateListAnimator="@null" android:text="Перезапустить микрофон" android:textAllCaps="false" android:textColor="@color/text_primary" android:textSize="16sp" />
+                    <Button android:id="@+id/commands_button" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="8dp" android:background="@drawable/bg_ghost" android:stateListAnimator="@null" android:text="Список команд" android:textAllCaps="false" android:textColor="@color/text_primary" android:textSize="16sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/page_tools" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:visibility="gone">
+                <TextView android:id="@+id/tools_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Инструменты" android:textColor="@color/text_primary" android:textSize="26sp" android:textStyle="bold" />
+                <Button android:id="@+id/dump_button" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="16dp" android:background="@drawable/bg_button" android:stateListAnimator="@null" android:text="Дамп VHAL" android:textAllCaps="false" android:textColor="@color/seg_on_text" android:textSize="16sp" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Файл: Android/data/com.example.voiceapp3/files/vhal-dump.txt" android:textColor="@color/hint" android:textSize="13sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/page_placeholder" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/bg_card" android:gravity="center" android:orientation="vertical" android:padding="24dp" android:visibility="gone">
+                <TextView android:id="@+id/placeholder_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Раздел" android:textColor="@color/text_primary" android:textSize="22sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Раздел в работе." android:textColor="@color/text_secondary" android:textSize="15sp" />
+            </LinearLayout>
+
+            <ScrollView android:id="@+id/page_settings" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true" android:visibility="gone">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@drawable/bg_card" android:orientation="vertical" android:padding="18dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Настройки" android:textColor="@color/text_primary" android:textSize="26sp" android:textStyle="bold" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Тема" android:textColor="@color/text_primary" android:textSize="16sp" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:orientation="horizontal">
+                        <Button android:id="@+id/theme_system" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginEnd="6dp" android:layout_weight="1" android:background="@drawable/bg_theme_off" android:stateListAnimator="@null" android:text="Система" android:textAllCaps="false" android:textColor="@color/text_primary" android:textSize="15sp" />
+                        <Button android:id="@+id/theme_dark" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginEnd="6dp" android:layout_weight="1" android:background="@drawable/bg_theme_off" android:stateListAnimator="@null" android:text="Тёмная" android:textAllCaps="false" android:textColor="@color/text_primary" android:textSize="15sp" />
+                        <Button android:id="@+id/theme_light" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1" android:background="@drawable/bg_theme_on" android:stateListAnimator="@null" android:text="Светлая" android:textAllCaps="false" android:textColor="@color/seg_on_text" android:textSize="15sp" />
+                    </LinearLayout>
+                    <TextView android:id="@+id/theme_hint" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Система — как на головном устройстве" android:textColor="@color/hint" android:textSize="13sp" />
+                    <Button android:id="@+id/update_button" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="20dp" android:background="@drawable/bg_button" android:stateListAnimator="@null" android:text="Проверить обновления" android:textAllCaps="false" android:textColor="@color/seg_on_text" android:textSize="16sp" />
+                    <TextView android:id="@+id/update_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Проверка при запуске" android:textColor="@color/hint" android:textSize="13sp" />
+                </LinearLayout>
+            </ScrollView>
+
+            <LinearLayout android:id="@+id/page_about" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/bg_card" android:orientation="vertical" android:padding="18dp" android:visibility="gone">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="О приложении" android:textColor="@color/text_primary" android:textSize="26sp" android:textStyle="bold" />
+                <TextView android:id="@+id/about_body" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Голосовой ассистент и центр Geely EX2.\nТолько IHU629G." android:textColor="@color/text_primary" android:textSize="16sp" />
+                <TextView android:id="@+id/credit_text" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Development by @a1ekss_a for Geely EX2" android:textColor="@color/text_secondary" android:textSize="14sp" />
+            </LinearLayout>
+        </FrameLayout>
+    </LinearLayout>
+</LinearLayout>
