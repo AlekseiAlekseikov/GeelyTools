@@ -1,0 +1,18 @@
+# ninja log v5
+0	126	1790708369140546083	CMakeFiles/roadcast_jni.dir/roadcast_jni.c.o	e3b0f4760c6127fa
+126	164	1790708369178396825	/Users/aleks/Documents/GeelyTools-main/app/build/intermediates/cxx/RelWithDebInfo/1f3c4b14/obj/arm64-v8a/libroadcast_jni.so	7a2dd07d064f95aa
+0	8	0	clean	7aeb5db16e02199d
+0	279	1790709433885047029	CMakeFiles/roadcast_jni.dir/roadcast_jni.c.o	e3b0f4760c6127fa
+279	414	1790709434020624696	/Users/aleks/Documents/GeelyTools-main/app/build/intermediates/cxx/RelWithDebInfo/1f3c4b14/obj/arm64-v8a/libroadcast_jni.so	7a2dd07d064f95aa
+0	7	0	clean	7aeb5db16e02199d
+0	199	1790709645165427888	CMakeFiles/roadcast_jni.dir/roadcast_jni.c.o	e3b0f4760c6127fa
+199	295	1790709645262089816	/Users/aleks/Documents/GeelyTools-main/app/build/intermediates/cxx/RelWithDebInfo/1f3c4b14/obj/arm64-v8a/libroadcast_jni.so	7a2dd07d064f95aa
+0	10	0	clean	7aeb5db16e02199d
+0	7	0	clean	7aeb5db16e02199d
+0	8	0	clean	7aeb5db16e02199d
+0	285	1790802540237909718	CMakeFiles/roadcast_jni.dir/roadcast_jni.c.o	e3b0f4760c6127fa
+285	415	1790802540368317693	/Users/aleks/Documents/GeelyTools-main/app/build/intermediates/cxx/RelWithDebInfo/1f3c4b14/obj/arm64-v8a/libroadcast_jni.so	7a2dd07d064f95aa
+0	8	0	clean	7aeb5db16e02199d
+0	208	1790865901798826697	CMakeFiles/roadcast_jni.dir/roadcast_jni.c.o	e3b0f4760c6127fa
+208	307	1790865901897970556	/Users/aleks/Documents/GeelyTools-main/app/build/intermediates/cxx/RelWithDebInfo/1f3c4b14/obj/arm64-v8a/libroadcast_jni.so	7a2dd07d064f95aa
+0	8	0	clean	7aeb5db16e02199d
