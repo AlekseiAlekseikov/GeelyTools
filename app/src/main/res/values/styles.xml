@@ -26,4 +26,12 @@
         <item name="android:textColorSecondary">@color/text_secondary</item>
         <item name="colorControlActivated">@color/accent</item>
     </style>
+
+    <!-- Flutter-приложение телеметрии (порт capy LaunchTheme/NormalTheme) -->
+    <style name="TelemetryLaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/telemetry_launch_background</item>
+    </style>
+    <style name="TelemetryNormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">?android:colorBackground</item>
+    </style>
 </resources>

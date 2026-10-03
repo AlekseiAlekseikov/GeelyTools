@@ -45,18 +45,11 @@ class TelemetryRuntime internal constructor(
         graph.preferenceRepository.setProposalAcceptedHandler { key, value ->
             applyPreferenceWrite(key, value)
         }
-        // Fresh pairing: the approval credential is already persisted when
-        // this fires (the coordinator hook runs after its settings writes),
-        // so the first pass runs now — not on the next 15-minute tick — and
-        // retries transient failures instead of fire-and-forget hoping.
-        // Runs on the graph job thread; further attempts reschedule there.
-        graph.onPairingApproved = { _ -> runPairingUpload(attempt = 0) }
+        // GeelyTools deviation: Capy Companion support (phone pairing, BLE live
+    // stream, Supabase cloud sync) is excluded — telemetry is strictly local.
     }
 
     private var collectorTick: ScheduledFuture<*>? = null
-
-    @Volatile
-    private var cloudUploadTick: ScheduledFuture<*>? = null
 
     /**
      * Finding 10: retention otherwise runs only at startup, so a run that
@@ -72,6 +65,18 @@ class TelemetryRuntime internal constructor(
     private var rangeRefresh: ScheduledFuture<*>? = null
 
     val publisher = LiveTelemetryPublisher(graph.store) { facade.liveMetadataMap() }
+
+    // GeelyTools deviation: the WebView shell (navigation / quick access /
+    // body callouts) keeps a thin live feed of its own. The Flutter telemetry
+    // app owns `publisher` through its EventChannel, and the publisher holds a
+    // single sink, so the shell gets a dedicated publisher instance over the
+    // same signal store instead of stealing the Flutter subscription.
+    fun newLivePublisher(): LiveTelemetryPublisher =
+        LiveTelemetryPublisher(graph.store) { facade.liveMetadataMap() }
+
+    // GeelyTools deviation: GPS fix for the shell map/navigation feed
+    // (the same statusMap the live frame metadata carries under "location").
+    fun locationStatusMap(): Map<String, Any?> = graph.locationSignalProvider.statusMap()
 
     /**
      * The account the car is currently paired to, or null when it is not
@@ -89,16 +94,6 @@ class TelemetryRuntime internal constructor(
     val vehicleSpeedPublisher = VehicleSpeedPublisher(graph.store)
     val database: com.timhss.capyenergy.telemetry.db.TelemetryDatabase get() = graph.database
 
-    /**
-     * Stage B4 (GeelyTools): доступ инженерных экранов разработчика
-     * (Roadcast Trace / Лаборатория сигналов) к репозиторию Roadcast —
-     * согласованная схема CAN и живые батч-снапшоты. Тот же объект,
-     * которым пользуется сам движок; потребители подписываются через
-     * subscribe() и закрывают подписку сами.
-     */
-    val roadcastRepository: com.timhss.capyenergy.roadcast.RoadcastRepository
-        get() = graph.roadcastRepository
-
     init {
         graph.chargeControlIpcClient.start()
     }
@@ -106,201 +101,6 @@ class TelemetryRuntime internal constructor(
     fun start() = sequence.start()
 
     fun stop() = sequence.stop()
-
-    /**
-     * One upload pass right after a fresh pairing approval, with bounded
-     * retries on transient failure — a cold auth token or a network blip at
-     * the moment of pairing must not silently drop the first delivery. The
-     * 15-minute background tick remains the ultimate fallback; this only
-     * closes the "how long before the FIRST attempt" gap.
-     *
-     * Permanent faults (401/403, schema) stop immediately: a retry would
-     * just repeat them. Attempts run on the graph job thread via the same
-     * pass the tick runs — no second upload path.
-     */
-    private fun runPairingUpload(attempt: Int) {
-        if (triggerCloudUpload()) {
-            if (attempt < PAIRING_UPLOAD_MAX_RETRIES) {
-                graph.maintenanceExecutor.schedule(
-                    { graph.jobExecutor.execute { runPairingUpload(attempt + 1) } },
-                    pairingUploadRetryDelayMillis(attempt),
-                    TimeUnit.SECONDS,
-                )
-            } else {
-                Log.w(TAG, "Pairing upload still failing after retries; background tick stays the fallback")
-            }
-        }
-    }
-
-    /**
-     * Boot-time pre-claim registration (issue #236 P2-T6 / B1).
-     *
-     * Owned by [BootRegistrationDriver] and called at startup (before the
-     * first upload) and on the 15-minute cloud tick. Re-registers when the
-     * credential was minted under a retired id, so an android_id-bound token
-     * is re-keyed under the VIN the moment the identity upgrade lands.
-     */
-    private val bootRegistration: BootRegistrationDriver by lazy {
-        BootRegistrationDriver(
-            coordinator = graph.pairingCoordinator,
-            settings = graph.settings,
-            vehicleIdProvider = { graph.resolveVehicleId() },
-            nowMillis = { bootRegistrationClock() },
-            scheduleRetry = { delayMillis ->
-                graph.maintenanceExecutor.schedule(
-                    { graph.jobExecutor.execute { bootRegistration.run() } },
-                    delayMillis,
-                    TimeUnit.MILLISECONDS,
-                )
-            },
-        )
-    }
-
-    private fun runBootRegistrationIfNeeded() = bootRegistration.run()
-
-    /**
-     * One upload pass over telemetry, annotations and preference control
-     * sync, catching all failures so the caller never crashes.
-     *
-     * Permanent faults (401/403, constraint) are logged as non-retryable;
-     * transient faults set [CloudUploadPass.retrySoon] so the pairing retry
-     * loop can come back sooner. The 15-minute tick ignores that flag.
-     */
-    internal data class CloudUploadPass(
-        val telemetryMoved: Int,
-        val annotationsMoved: Int,
-        val retrySoon: Boolean,
-    )
-
-    internal val revocationDetector: RevocationDetector by lazy {
-        RevocationDetector(
-            settings = graph.settings,
-            vehicleIdProvider = { graph.resolveVehicleId() },
-            cloudSinkProvider = { graph.cloudSink },
-        )
-    }
-
-    internal fun isRlsDenial(error: Throwable): Boolean = revocationDetector.isRlsDenial(error)
-    internal fun handlePermanentUploadFailure(error: Throwable) = revocationDetector.handlePermanentUploadFailure(error)
-    internal fun onRevoked() = revocationDetector.onRevoked()
-    internal suspend fun updateCutoverReadiness(active: Boolean) = revocationDetector.updateCutoverReadiness(active)
-
-    internal fun runCloudUploadPass(): CloudUploadPass {
-        var retrySoon = false
-        var telemetryMoved = 0
-        try {
-            val report = kotlinx.coroutines.runBlocking { graph.telemetryCloudUploader.upload() }
-            telemetryMoved = report.perStream.values.sum()
-        } catch (e: com.timhss.capyenergy.telemetry.sync.TelemetryCloudUploadException) {
-            if (e.retryable) {
-                Log.w(TAG, "Cloud upload transient failure for ${e.table}, will retry", e)
-                retrySoon = true
-            } else {
-                Log.w(TAG, "Cloud upload permanent failure for ${e.table}, not retrying", e)
-                handlePermanentUploadFailure(e)
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Cloud upload failed", e)
-            retrySoon = true
-        }
-        var annotationsMoved = 0
-        try {
-            val report = kotlinx.coroutines.runBlocking { graph.annotationCloudUploader.upload() }
-            annotationsMoved = report.perStream.values.sum()
-            // Also treat telemetry moved as success for cutover guard
-        } catch (e: com.timhss.capyenergy.telemetry.sync.AnnotationCloudUploadException) {
-            if (e.retryable) {
-                Log.w(TAG, "Annotation cloud upload transient failure for ${e.table}, will retry", e)
-                retrySoon = true
-            } else {
-                Log.w(TAG, "Annotation cloud upload permanent failure for ${e.table}, not retrying", e)
-                handlePermanentUploadFailure(e)
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Annotation cloud upload failed", e)
-            retrySoon = true
-        }
-        try {
-            kotlinx.coroutines.runBlocking { graph.preferenceControlSync.sync() }
-        } catch (e: com.timhss.capyenergy.telemetry.control.PreferenceControlCloudException) {
-            if (e.retryable) {
-                Log.w(TAG, "Preference control sync transient failure, will retry", e)
-                retrySoon = true
-            } else {
-                Log.w(TAG, "Preference control sync permanent failure, not retrying", e)
-                handlePermanentUploadFailure(e)
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Preference control sync failed", e)
-            retrySoon = true
-        }
-        if (graph.settings.pairingStatus() == TelemetrySettings.PAIRING_STATUS_APPROVED && !retrySoon) {
-            runCatching {
-                kotlinx.coroutines.runBlocking {
-                    updateCutoverReadiness(active = true)
-                }
-            }
-        }
-        return CloudUploadPass(telemetryMoved, annotationsMoved, retrySoon)
-    }
-
-    /**
-     * Triggers one cloud upload run, catching all failures so the background
-     * runner never crashes.
-     *
-     * @return true when a pass failed transiently and a sooner retry is
-     *   worthwhile (used by [runPairingUpload]); the tick ignores it.
-     */
-    private fun triggerCloudUpload(): Boolean = runCloudUploadPass().retrySoon
-
-    /**
-     * Runs one cloud upload pass right now for the FORCE SYNC button, and
-     * says what the car did.
-     *
-     * Runs on the caller's thread: the bridge already puts this on a
-     * background thread, and the pass itself blocks on the network. A build
-     * with cloud sync off says so plainly instead of pretending to sync and
-     * silently doing nothing. A car that is not paired (unpaired, pending, or
-     * revoked) says that too: nothing was attempted, so nothing failed.
-     */
-    fun forceCloudSyncNow(): Map<String, Any?> {
-        if (!graph.isCloudReady()) {
-            return mapOf("cloudReady" to false, "paired" to true, "movedRows" to 0, "failed" to false)
-        }
-        if (!graph.isUploadEligible()) {
-            return mapOf("cloudReady" to true, "paired" to false, "movedRows" to 0, "failed" to false)
-        }
-        val pass = runCatching {
-            // Promote ended pending sessions and intervals from prior boots so
-            // any un-anchored completed sessions are eligible to upload.
-            graph.telemetryCloudUploader.promoteEndedPending()
-            runCloudUploadPass()
-        }.getOrElse { error ->
-            Log.w(TAG, "Force cloud upload failed", error)
-            return mapOf("cloudReady" to true, "paired" to true, "movedRows" to 0, "failed" to true)
-        }
-        val failed = pass.retrySoon && (pass.telemetryMoved + pass.annotationsMoved) == 0
-        return mapOf(
-            "cloudReady" to true,
-            "paired" to true,
-            "movedRows" to (pass.telemetryMoved + pass.annotationsMoved),
-            "failed" to failed,
-        )
-    }
-
-    /**
-     * Marks the whole local telemetry history for upload again.
-     *
-     * A developer tool, reached only from the developer settings: after a
-     * cloud copy is wiped for a test, the car's rows still carry dirty=0 and
-     * no ordinary path resends them. Pairing and FORCE SYNC must not do this
-     * for every user, because it re-sends the whole database. The next upload
-     * pass (tick or FORCE SYNC) carries the rows.
-     */
-    fun markCloudHistoryDirty(): Map<String, Any?> {
-        val marked = graph.telemetryCloudUploader.markHistoryDirty()
-        return mapOf("markedRows" to marked.values.sum())
-    }
 
     /**
      * The lifecycle calls, kept off the public surface.
@@ -394,28 +194,8 @@ class TelemetryRuntime internal constructor(
                 COLLECTOR_TICK_SECONDS,
                 TimeUnit.SECONDS
             )
-            // Periodic cloud upload alongside the collector. It runs on the
-            // job executor (never the scheduler thread) and catches all
-            // failures so it cannot crash the maintenance runner.
-            cloudUploadTick = graph.maintenanceExecutor.scheduleWithFixedDelay(
-                {
-                    graph.jobExecutor.execute {
-                        // Registration is idempotent and self-gated, so the
-                        // tick is the backstop after the startup retries run
-                        // out: an unregistered car keeps trying until a token
-                        // lands or the next boot.
-                        runCatching { runBootRegistrationIfNeeded() }
-                            .onFailure { error -> Log.w(TAG, "Scheduled boot registration failed", error) }
-                        runCatching { triggerCloudUpload() }
-                            .onFailure { error ->
-                                Log.w(TAG, "Scheduled cloud upload failed", error)
-                            }
-                    }
-                },
-                CLOUD_UPLOAD_INITIAL_DELAY_SECONDS,
-                CLOUD_UPLOAD_INTERVAL_SECONDS,
-                TimeUnit.SECONDS
-            )
+            // GeelyTools deviation: Capy Companion support (phone pairing, BLE live
+    // stream, Supabase cloud sync) is excluded — telemetry is strictly local.
             // Finding 10: startup retention skips while a session is active
             // and never retries within the process. This re-runs it daily;
             // on the job executor so a long sweep never blocks the scheduler.
@@ -435,28 +215,14 @@ class TelemetryRuntime internal constructor(
         override fun stopCollectorTick() {
             collectorTick?.cancel(false)
             collectorTick = null
-            cloudUploadTick?.cancel(false)
-            cloudUploadTick = null
             retentionTick?.cancel(false)
             retentionTick = null
         }
 
         override fun runStartupMaintenance() {
             graph.jobExecutor.execute {
-                // Pre-claim registration first: a brand-new car has no token,
-                // so the upload gate (REGISTERED or APPROVED) would refuse the
-                // startup pass below. Registering is what makes this boot's
-                // upload possible at all. It never blocks: failures schedule
-                // bounded backoff retries and are logged here.
-                runCatching { runBootRegistrationIfNeeded() }
-                    .onFailure { error -> Log.w(TAG, "Boot registration failed", error) }
-                // Cloud upload precedes retention: retention is gated on
-                // `dirty = 0`, so a pending queue must be drained first or
-                // eligible rows would be retained longer than needed. Both
-                // are wrapped in runCatching so a transient network failure
-                // does not abort the other.
-                runCatching { triggerCloudUpload() }
-                    .onFailure { error -> Log.w(TAG, "Cloud upload failed (startup)", error) }
+                // GeelyTools deviation: Capy Companion support (phone pairing, BLE live
+    // stream, Supabase cloud sync) is excluded — telemetry is strictly local.
                 // Backfill first and unconditionally: retention is rate limited to
                 // once a day, so sessions left without permanent metrics —
                 // everything that predates session_aggregates — would otherwise
@@ -489,21 +255,13 @@ class TelemetryRuntime internal constructor(
             // CarPlay and Android Auto destinations from this monitor, and one
             // that has never bound answers UNKNOWN forever.
             graph.projectionPresenceMonitor?.start()
-            graph.jobExecutor.execute {
-                try {
-                    graph.liveTelemetryBleServer.start()
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to start BLE live stream server", e)
-                }
-            }
+            // GeelyTools deviation: Capy Companion support (phone pairing, BLE live
+    // stream, Supabase cloud sync) is excluded — telemetry is strictly local.
         }
 
         override fun stopBleServer() {
-            try {
-                graph.liveTelemetryBleServer.stop()
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to stop BLE live stream server", e)
-            }
+            // GeelyTools deviation: Capy Companion support (phone pairing, BLE live
+    // stream, Supabase cloud sync) is excluded — telemetry is strictly local.
         }
 
         override fun restoreKeyserver() {
@@ -528,14 +286,8 @@ class TelemetryRuntime internal constructor(
             graph.frameRepository.persistActiveSnapshot(timestamp, snapshot)
             graph.roadcastTripMetricsMonitor.syncCadence()
 
-            val liveSnapshot = LiveTelemetrySnapshotAssembler.assemble(
-                wallTimeUtcMillis = timestamp.receivedAtUtcMillis,
-                signalSnapshot = snapshot,
-                locationSnapshot = graph.locationSignalProvider.latestSnapshot(),
-                isCharging = graph.chargeSessionDetector.activeFrameSession() != null,
-                isParked = graph.parkedSessionDetector.activeFrameSession() != null
-            )
-            graph.liveTelemetryBleServer.broadcastSnapshot(liveSnapshot)
+            // GeelyTools deviation: Capy Companion support (phone pairing, BLE live
+    // stream, Supabase cloud sync) is excluded — telemetry is strictly local.
         }
     }
 
@@ -558,12 +310,6 @@ class TelemetryRuntime internal constructor(
     fun rangeEstimate(): NativeRangeEstimate = facade.rangeEstimate()
 
     fun heading(): VehicleHeading = facade.heading()
-
-    /**
-     * Статус GPS-приёмника (Stage NAV): живая позиция для карты — координаты,
-     * курс, скорость, возраст фикса. Пробрасывается как есть из движка.
-     */
-    fun locationStatus(): Map<String, Any?> = facade.locationStatus()
 
     fun recentEventsMap(limit: Int): Map<String, Any?> = facade.recentEventsMap(limit)
 
@@ -624,8 +370,7 @@ class TelemetryRuntime internal constructor(
      * pack capacity causes happens exactly once, at the moment of
      * confirmation. Answers false when the value cannot be written.
      */
-    fun applyPreferenceWrite(key: String, value: String?): Boolean {
-        return when (key) {
+    fun applyPreferenceWrite(key: String, value: String?): Boolean = when (key) {
         "pack_capacity_wh" -> {
             val capacity = value?.toDoubleOrNull()
                 ?.takeIf { it.isFinite() && it > 0.0 }
@@ -643,7 +388,6 @@ class TelemetryRuntime internal constructor(
             true
         }
         else -> false
-        }
     }
 
     fun batteryCycles(limit: Int): BatteryCyclePage = facade.batteryCycles(limit)
@@ -675,19 +419,8 @@ class TelemetryRuntime internal constructor(
 
 
     // ── Cloud device pairing (issue #227) ──────────────────────────────
-    // Exposed for `TelemetryBridge`'s method channel. The `device_code` is
-    // memory-only in the coordinator; the facade caches `userCode`/`expiresAt`
-    // in memory for the pending state.
-    suspend fun startDevicePairing(): Map<String, Any?> = facade.startDevicePairing()
-    suspend fun getDevicePairingState(): Map<String, Any?> = facade.getDevicePairingState()
-    suspend fun cancelDevicePairing(): Map<String, Any?> = facade.cancelDevicePairing()
-
-    fun pairedCompanionDevices(): Map<String, Any?> = facade.pairedCompanionDevices()
-    fun isBleStreamActive(): Boolean = facade.isBleStreamActive()
-    fun cloudSyncProgress(): Map<String, Any?> = facade.cloudSyncProgress()
-
-    fun revokeCompanionDevice(deviceId: String): Map<String, Any?> =
-        facade.revokeCompanionDevice(deviceId)
+    // GeelyTools deviation: Capy Companion support (phone pairing, BLE live
+    // stream, Supabase cloud sync) is excluded — telemetry is strictly local.
 
     fun activeSessionType(): String? = graph.activeSessionType()
 
@@ -934,7 +667,8 @@ class TelemetryRuntime internal constructor(
      */
     fun setKeepBluetoothOnEnabled(enabled: Boolean): Map<String, Any?> {
         graph.settings.setKeepBluetoothOnEnabled(enabled)
-        if (enabled) graph.liveTelemetryBleServer.applyKeepBluetoothOn()
+        // GeelyTools deviation: the BLE live-stream server (Companion-only) is
+        // excluded, so the preference is persisted without the radio apply.
         return graph.settings.toMap()
     }
 
@@ -966,16 +700,6 @@ class TelemetryRuntime internal constructor(
 
     fun setReplaceOemChargingEnabled(enabled: Boolean): Map<String, Any?> {
         graph.settings.setReplaceOemChargingEnabled(enabled)
-        return graph.settings.toMap()
-    }
-
-    /**
-     * Тумблер «CarPlay / Android Auto» (capy: projection_beta_enabled).
-     * Половинки, которые надо перестроить живьём (супервизор авто-открытия и
-     * экранная подписка присутствия), трогает вызывающий — TelemetryUiAdapter.
-     */
-    fun setProjectionBetaEnabled(enabled: Boolean): Map<String, Any?> {
-        graph.settings.setProjectionBetaEnabled(enabled)
         return graph.settings.toMap()
     }
 
@@ -1075,21 +799,6 @@ class TelemetryRuntime internal constructor(
         private const val TAG = "TelemetryRuntime"
         private const val COLLECTOR_TICK_SECONDS = 1L
         private const val RANGE_EFFICIENCY_REFRESH_SECONDS = 60L
-        private const val CLOUD_UPLOAD_INITIAL_DELAY_SECONDS = 30L
-        private const val CLOUD_UPLOAD_INTERVAL_SECONDS = 900L
-        // First pairing delivery: immediate attempt plus bounded retries with
-        // growing delay. Small enough to finish well inside the 15-minute
-        // tick; the tick itself stays the fallback after these run out.
-        private const val PAIRING_UPLOAD_MAX_RETRIES = 3
-        private const val PAIRING_UPLOAD_RETRY_BASE_DELAY_SECONDS = 15L
-        private const val PAIRING_UPLOAD_RETRY_MAX_DELAY_SECONDS = 120L
-
-        private fun pairingUploadRetryDelayMillis(attempt: Int): Long =
-            minOf(
-                PAIRING_UPLOAD_RETRY_BASE_DELAY_SECONDS shl attempt,
-                PAIRING_UPLOAD_RETRY_MAX_DELAY_SECONDS,
-            )
-
         /** Finding 10: retry startup-skipped retention once a day. */
         private const val RETENTION_INTERVAL_SECONDS = 86_400L
         @Volatile

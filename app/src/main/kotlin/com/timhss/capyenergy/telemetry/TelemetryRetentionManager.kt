@@ -1,7 +1,6 @@
 package com.timhss.capyenergy.telemetry
 
 import android.content.Context
-import com.example.voiceapp3.BuildConfig
 import com.timhss.capyenergy.telemetry.db.TelemetryDatabase
 import com.timhss.capyenergy.telemetry.sync.SyncStreamType
 import java.util.concurrent.atomic.AtomicLong
@@ -257,9 +256,11 @@ class TelemetryRetentionManager(
      * days, so 360 sessions), delete by age alone.
      */
     private fun continuousBackstopActive(): Boolean {
-        if (!BuildConfig.CLOUD_SYNC_ENABLED) return true
-        if (BuildConfig.SUPABASE_URL.isBlank() || BuildConfig.SUPABASE_ANON_KEY.isBlank()) return true
-        return database.sessionDao().countByKind("CONTINUOUS") > continuousRetentionDays() * 2
+        // GeelyTools deviation: облачная выгрузка исключена из сборки
+        // (телеметрия строго локальная), поэтому backstop всегда активен —
+        // ровно та же ветка, что у capy при выключенном/несконфигурированном
+        // облаке (!CLOUD_SYNC_ENABLED → true).
+        return true
     }
 
     private fun retentionDays(): Long {

@@ -124,6 +124,21 @@
             </intent-filter>
         </activity>
 
+        <!-- Flutter-приложение телеметрии (точный порт capy MainActivity) -->
+        <activity
+            android:name=".TelemetryActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/TelemetryLaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/TelemetryNormalTheme" />
+        </activity>
+
         <activity
             android:name=".CommandsActivity"
             android:label="Команды"
@@ -232,6 +247,11 @@
             android:enabled="true"
             android:exported="true"
             android:permission="android.permission.DUMP" />
+        <!-- Flutter embedding v2 (GeneratedPluginRegistrant) -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+
     </application>
     <!-- Telemetry engine (Capy Energy, Apache 2.0) -->
     <uses-permission android:name="android.car.permission.CAR_PROPERTY" />

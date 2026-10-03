@@ -17,7 +17,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
-import com.example.voiceapp3.ui.TelemetryUiAdapter
+import com.example.voiceapp3.ui.VehicleLiveAdapter
 import com.example.voiceapp3.ui.UiBridge
 
 /**
@@ -37,12 +37,17 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var bridge: UiBridge
-    private lateinit var telemetryAdapter: TelemetryUiAdapter
+    // GeelyTools deviation: тонкий live-фид движка телеметрии для шелла
+    // (навигация/кузов/карточка батареи); экраны телеметрии — TelemetryActivity.
+    private lateinit var vehicleLive: VehicleLiveAdapter
 
     // Stage CPv2: рендер-мост CarPlay/AA (capy CarplayBridge+AndroidAutoBridge+
     // ProjectionTouchBridge → ProjectionRenderBridge). Живёт с активностью,
     // как мосты capy с configureFlutterEngine.
     private var projectionRender: com.example.voiceapp3.ui.ProjectionRenderBridge? = null
+
+    /** Встроенный Flutter-экран телеметрии (вкладка «Телеметрия» шелла). */
+    private var telemetryHost: com.example.voiceapp3.ui.TelemetryHostController? = null
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -57,12 +62,17 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         webView = findViewById(R.id.webView)
-        // Данные телеметрии (Stage B): адаптер тянет их из движка Capy Energy
-        // и возвращает в WebView пакетом telemetry.data через мост.
-        telemetryAdapter = TelemetryUiAdapter(applicationContext) { name, json ->
+        // Живой фид движка телеметрии для шелла (telemetry.live + тонкий
+        // telemetry.data): навигация, быстрый доступ, карточка батареи.
+        vehicleLive = VehicleLiveAdapter(applicationContext) { name, json ->
             if (::bridge.isInitialized) bridge.pushToUi(name, json)
         }
-        bridge = UiBridge(this, webView, telemetryAdapter)
+        bridge = UiBridge(this, webView, vehicleLive)
+        // GeelyTools deviation: Flutter-телеметрия встроена во вкладку шелла
+        // (FlutterView поверх WebView с отступом под плавающий док) — вкладка
+        // открывает её сразу, док остаётся видимым.
+        telemetryHost = com.example.voiceapp3.ui.TelemetryHostController(this)
+        bridge.telemetryHost = telemetryHost
         // Stage CPv2: рендер-мост строится сразу после UiBridge (аналог
         // configureFlutterEngine в capy), статусы уходят в WebView пушами
         // carplay.status / android_auto.status.
@@ -305,6 +315,9 @@ class MainActivity : AppCompatActivity() {
         // Stage CPv2: render-хосты переприменяют режим на resume (posted —
         // только detach-порядок нагрузочный, см. onPause).
         projectionRender?.onActivityResumed()
+        // Встроенная телеметрия: resumed-состояние движку Flutter, если
+        // вкладка телеметрии активна.
+        telemetryHost?.onActivityResumed()
     }
 
     override fun onPause() {
@@ -314,6 +327,7 @@ class MainActivity : AppCompatActivity() {
         // после того, как эта пауза вернётся; detach, прилетевший позже,
         // разрушит только что созданное EGL-состояние и оставит экран чёрным.
         projectionRender?.onActivityPausedSynchronously()
+        telemetryHost?.onActivityPaused()
         isResumed = false
         if (::webView.isInitialized) {
             webView.onPause()
@@ -329,7 +343,12 @@ class MainActivity : AppCompatActivity() {
         // touch-контроллер снимает свои binding-и.
         projectionRender?.dispose()
         projectionRender = null
+        // Встроенная телеметрия: detach view + dispose моста + destroy движка
+        // (аналог cleanUpFlutterEngine в TelemetryActivity).
+        telemetryHost?.dispose()
+        telemetryHost = null
         if (::bridge.isInitialized) bridge.dispose()
+        if (::vehicleLive.isInitialized) vehicleLive.dispose()
         if (::webView.isInitialized) webView.destroy()
         super.onDestroy()
     }

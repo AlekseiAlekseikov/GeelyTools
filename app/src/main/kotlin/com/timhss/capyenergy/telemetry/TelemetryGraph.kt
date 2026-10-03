@@ -3,7 +3,6 @@ package com.timhss.capyenergy.telemetry
 import android.content.Context
 import android.provider.Settings
 import android.util.Log
-import com.example.voiceapp3.BuildConfig
 import com.timhss.capyenergy.concurrent.namedSingleThreadExecutor
 import com.timhss.capyenergy.concurrent.namedSingleThreadScheduledExecutor
 import com.timhss.capyenergy.helpers.AudioTrackTemperatureModeFeedback
@@ -14,20 +13,8 @@ import com.timhss.capyenergy.roadcast.RoadcastDaemon
 import com.timhss.capyenergy.roadcast.RoadcastRepository
 import com.timhss.capyenergy.roadcast.RoadcastUpdateManager
 import com.timhss.capyenergy.service.AutoOpenLauncher
-import com.timhss.capyenergy.telemetry.control.HttpPreferenceControlCloud
-import com.timhss.capyenergy.telemetry.control.PreferenceControlCloud
-import com.timhss.capyenergy.telemetry.control.PreferenceControlSync
-import com.timhss.capyenergy.telemetry.control.SharedPreferencesReportedDecisionStore
 import com.timhss.capyenergy.telemetry.db.RoomVehicleIdAliasStore
 import com.timhss.capyenergy.telemetry.db.TelemetryDatabase
-import com.timhss.capyenergy.telemetry.pairing.DevicePairingClient
-import com.timhss.capyenergy.telemetry.pairing.HttpDevicePairingClient
-import com.timhss.capyenergy.telemetry.pairing.PairingCoordinator
-import com.timhss.capyenergy.telemetry.sync.CloudSink
-import com.timhss.capyenergy.telemetry.sync.CompanionDeviceManager
-import com.timhss.capyenergy.telemetry.sync.HttpCloudSink
-import com.timhss.capyenergy.telemetry.sync.SyncCursorRepository
-import com.timhss.capyenergy.telemetry.sync.TelemetryCloudUploader
 import com.timhss.capyenergy.update.ChargeControlAppManager
 import com.timhss.capyenergy.vehicle.HvacClimateController
 import com.timhss.capyenergy.vehicle.VehiclePropertyHelper
@@ -77,19 +64,8 @@ internal class TelemetryCollectionState {
 internal class TelemetryGraph(
     context: Context,
     injectedProjectionPresence: (() -> ProjectionPresenceSnapshot)? = null,
-    /**
-     * Cloud-sync gate — defaults to [BuildConfig.CLOUD_SYNC_ENABLED] (ON
-     * unless explicitly disabled via `local.properties` / gradle property /
-     * env).
-     *
-     * Standing decision from the owner: the cloud stays on. An unconfigured
-     * build still moves nothing because the Supabase URL/key are empty unless
-     * a project is wired. When false the graph behaves exactly as before.
-     *
-     * Injected for JVM tests; production passes null and reads BuildConfig.
-     */
-    private val injectedCloudSyncEnabled: Boolean? = null,
-    private val injectedDevicePairingClient: DevicePairingClient? = null,
+    // GeelyTools deviation: Capy Companion support (phone pairing, BLE live
+    // stream, Supabase cloud sync) is excluded — telemetry is strictly local.
 ) {
     val appContext: Context = context.applicationContext
     val database = TelemetryDatabase.get(appContext)
@@ -124,16 +100,8 @@ internal class TelemetryGraph(
     val store = SignalStateStore(detectorExecutor)
     val settings = TelemetrySettings(appContext)
 
-    // Phantom pending: if the process died between start() and the first
-    // poll/cancel, pairing_status stays "pending" in SharedPreferences forever
-    // but device_code is memory-only and lost. No poll can ever succeed;
-    // reset to unpaired at boot so a future direct reader does not see a
-    // phantom pending. Doc also notes this.
-    private val pairingBootReset: Unit = run {
-        if (settings.pairingStatus() == TelemetrySettings.PAIRING_STATUS_PENDING) {
-            settings.clearPairing()
-        }
-    }
+    // GeelyTools deviation: Capy Companion support (phone pairing, BLE live
+    // stream, Supabase cloud sync) is excluded — telemetry is strictly local.
 
     /**
      * Layered vehicle identity, resolved before the first session of a boot
@@ -179,21 +147,8 @@ internal class TelemetryGraph(
         injectedProjectionPresence
             ?: { projectionPresenceMonitor?.snapshot() ?: ProjectionPresenceSnapshot.unknown }
 
-    val companionDeviceManager = CompanionDeviceManager(appContext)
-    val syncCursorRepository = SyncCursorRepository(
-        syncCursorDao = database.syncCursorDao(),
-        isDevicePaired = { deviceId -> companionDeviceManager.findDevice(deviceId) != null },
-        sessionDao = database.sessionDao(),
-        intervalDao = database.intervalDao(),
-        batteryCycleDao = database.batteryCycleDao(),
-        telemetryEventDao = database.telemetryEventDao(),
-        insightPlaceDao = database.insightPlaceDao(),
-        sessionCostDao = database.sessionCostDao(),
-        preferenceDao = database.preferenceDao(),
-        preferenceProposalDao = database.preferenceProposalDao(),
-        journeyDao = database.journeyDao(),
-        trackDao = database.trackDao()
-    )
+    // GeelyTools deviation: Capy Companion support (phone pairing, BLE live
+    // stream, Supabase cloud sync) is excluded — telemetry is strictly local.
     val eventRepository = EventRepository(
         appContext,
         { settings.debugEventFileEnabled() },
@@ -272,242 +227,12 @@ internal class TelemetryGraph(
     val retentionManager = TelemetryRetentionManager(appContext, capacityWhProvider = { resolveCapacityWh() })
 
     /**
-     * Cloud-sync gate for Lanes A/B/C: real Supabase sinks are wired and
-     * default ON. Sourcing follows the already-established pattern —
-     * [BuildConfig.SUPABASE_URL] / [BuildConfig.SUPABASE_ANON_KEY] via
-     * `local.properties` → gradle property → env — so no new credential
-     * mechanism is invented. When false the graph is inert exactly as before.
+     * GeelyTools deviation: Capy Companion support (phone pairing, BLE live
+     * stream, Supabase cloud sync) is excluded — telemetry is strictly local.
+     * The flag stays so every repository keeps Capy's exact account stamping
+     * path; with the cloud gone it always resolves to a null account id.
      */
-    val cloudSyncEnabled: Boolean get() = injectedCloudSyncEnabled ?: BuildConfig.CLOUD_SYNC_ENABLED
-    /**
-     * Whether the real cloud path could actually reach Supabase if asked.
-     *
-     * Gate ON plus non-empty URL/key means the build *can* sync; a paired
-     * car also needs [TelemetrySettings.accountId] and [TelemetrySettings.carToken]
-     * (saved by [com.timhss.capyenergy.telemetry.pairing.PairingCoordinator]
-     * on `Approved`) plus a resolved [vehicleId] (from [VehicleIdentityResolver]).
-     * Gate OFF or missing Supabase config → no-op, matching every prior phase.
-     */
-    fun isCloudReady(): Boolean =
-        cloudSyncEnabled && BuildConfig.SUPABASE_URL.isNotBlank() && BuildConfig.SUPABASE_ANON_KEY.isNotBlank()
-
-    /**
-     * Resolves the sink for Lanes A/B. When the gate is on and Supabase is
-     * configured, returns a real [HttpCloudSink] that carries the anon key and
-     * the car token (for future device-token RLS on telemetry/annotation
-     * tables); otherwise returns the no-op sink that every prior phase shipped
-     * with. Tests may still call [setCloudSink] to inject a fake.
-     */
-    private fun resolveCloudSink(): CloudSink =
-        if (isCloudReady()) {
-            HttpCloudSink(
-                baseUrl = BuildConfig.SUPABASE_URL,
-                anonKey = BuildConfig.SUPABASE_ANON_KEY,
-                carTokenProvider = { settings.carToken() },
-            )
-        } else {
-            NoOpCloudSink
-        }
-
-    /**
-     * Car-side cloud uploader for Phase 1 direct upload.
-     *
-     * The sink is pluggable for tests; the production sink is a no-op when
-     * the gate is off or Supabase credentials are missing. The uploader is
-     * still scheduled alongside retention so the queue drains as soon as a
-     * sink is present, without changing the schedule.
-     */
-    var cloudSink: CloudSink = resolveCloudSink()
-        private set
-
-    fun setCloudSink(sink: CloudSink) {
-        cloudSink = sink
-    }
-
-    /** Re-resolves [cloudSink] from the current gate/config. For tests. */
-    fun refreshCloudSink() {
-        cloudSink = resolveCloudSink()
-    }
-    val telemetryCloudUploader: TelemetryCloudUploader by lazy {
-        val forwardingSink = object : CloudSink {
-            override suspend fun upsert(
-                table: String,
-                rows: List<Map<String, Any?>>,
-                conflictColumns: List<String>,
-                merge: Boolean
-            ) = cloudSink.upsert(table, rows, conflictColumns, merge)
-            override suspend fun delete(
-                table: String,
-                vehicleId: String,
-                keys: List<Triple<String, String, Long>>
-            ) = cloudSink.delete(table, vehicleId, keys)
-        }
-        TelemetryCloudUploader(
-            sessionDao = database.sessionDao(),
-            intervalDao = database.intervalDao(),
-            trackDao = database.trackDao(),
-            telemetryEventDao = database.telemetryEventDao(),
-            batteryCycleDao = database.batteryCycleDao(),
-            intervalReplacedKeyDao = database.intervalReplacedKeyDao(),
-            sink = forwardingSink,
-            vehicleIdProvider = { resolveVehicleId() },
-            // Alias-canonicalize before upload: rows recorded under a retired
-            // id (android_id) upload under the canonical VIN, matching the
-            // vehicle the device token is bound to (B1). Same store the
-            // identity resolver writes on an upgrade.
-            aliases = RoomVehicleIdAliasStore(database.vehicleIdAliasDao(), database.sessionDao()),
-            // account_id is the pairing credential (Phase 2's PairingCoordinator
-            // saves it to TelemetrySettings on Approved). It stays null until
-            // approval — including while registered-but-unclaimed, when the
-            // uploader still runs and writes account_id = null rows (Phase 1
-            // RLS accepts them; the server stamps the column from the device
-            // token). When the gate is off we answer null AND report ineligible
-            // below, preserving the inert behavior (no sink writes, dirty kept)
-            // that every prior phase relies on.
-            accountIdProvider = {
-                AccountIdProvider.of(
-                    cloudSyncEnabled,
-                    settings.pairingStatus(),
-                    settings.accountId()
-                )
-            },
-            // Upload eligibility, not identity: only an APPROVED (claimed) car
-            // uploads. Unclaimed uploads (REGISTERED with account_id = null)
-            // are disabled: unclaimed rows are unreadable by every client and
-            // were the main database-growth source. Unpaired/pending/revoked
-            // cars upload nothing either way.
-            uploadEnabledProvider = { isUploadEligible() },
-        )
-    }
-
-    fun isUploadEligible(): Boolean =
-        cloudSyncEnabled && settings.pairingStatus() == TelemetrySettings.PAIRING_STATUS_APPROVED
-
-    val annotationCloudUploader: com.timhss.capyenergy.telemetry.sync.AnnotationCloudUploader by lazy {
-        val forwardingSink = object : CloudSink {
-            override suspend fun upsert(
-                table: String,
-                rows: List<Map<String, Any?>>,
-                conflictColumns: List<String>,
-                merge: Boolean
-            ) = cloudSink.upsert(table, rows, conflictColumns, merge)
-            override suspend fun delete(
-                table: String,
-                vehicleId: String,
-                keys: List<Triple<String, String, Long>>
-            ) = cloudSink.delete(table, vehicleId, keys)
-        }
-        com.timhss.capyenergy.telemetry.sync.AnnotationCloudUploader(
-            insightPlaceDao = database.insightPlaceDao(),
-            sessionCostDao = database.sessionCostDao(),
-            journeyDao = database.journeyDao(),
-            preferenceDao = database.preferenceDao(),
-            sessionDao = database.sessionDao(),
-            sink = forwardingSink,
-            vehicleIdProvider = { resolveVehicleId() },
-            // Annotations stay claimed-account-only (#236 P2-T5): OFF → null
-            // (inert via this uploader's own null short-circuit), ON → real
-            // account only when approved. Registered-but-unclaimed cars never
-            // upload annotations, and a null account never reaches the sink.
-            accountIdProvider = {
-                AccountIdProvider.of(
-                    cloudSyncEnabled,
-                    settings.pairingStatus(),
-                    settings.accountId()
-                )
-            },
-            aliases = RoomVehicleIdAliasStore(database.vehicleIdAliasDao(), database.sessionDao())
-        )
-    }
-
-    /**
-     * The car's Lane C (issue #227) control-plane client.
-     *
-     * The seam is pluggable for tests; the production impl is real and reachable
-     * but inert until a Supabase project AND a paired car_token are present —
-     * the same gate that keeps Lane A/B uploaders inert until credentials are
-     * wired. The token is the credential [PairingCoordinator] saved on an
-     * approved pairing, so an unpaired car simply moves nothing.
-     */
-    var preferenceControlCloud: PreferenceControlCloud = HttpPreferenceControlCloud(
-        carTokenProvider = { settings.carToken() },
-    )
-        private set
-
-    val preferenceControlSync: PreferenceControlSync by lazy {
-        PreferenceControlSync(
-            cloud = preferenceControlCloud,
-            proposalDao = database.preferenceProposalDao(),
-            surfaceProposal = { row -> preferenceRepository.mergeIncomingProposal(row) },
-            reportedStore = SharedPreferencesReportedDecisionStore.from(appContext),
-            vehicleIdProvider = { resolveVehicleId() },
-            accountIdProvider = { settings.accountId() },
-        )
-    }
-
-    /**
-     * Cloud device-pairing coordinator (issue #227).
-     *
-     * Production wiring uses the real [HttpDevicePairingClient] (JDK HTTP
-     * against `POST {base}/device-pairing/start` and `/poll`). The seam is
-     * pluggable like [cloudSink] / [preferenceControlCloud] so JVM tests can
-     * substitute a [com.timhss.capyenergy.telemetry.pairing.FakeDevicePairingClient].
-     *
-     * `device_code` (the polling secret) lives only in [PairingCoordinator.currentDeviceCode]
-     * in memory and is never persisted — only the terminal credential
-     * (`car_token`/`account_id`/`pairing_status`) is written to [TelemetrySettings].
-     */
-    var devicePairingClient: DevicePairingClient = injectedDevicePairingClient ?: HttpDevicePairingClient()
-        private set
-
-    /**
-     * Fired on a [jobExecutor] thread right after a fresh pairing approval,
-     * once history has been re-marked dirty for a changed account.
-     *
-     * Set by [TelemetryRuntime] to run the first upload pass immediately
-     * (with bounded retries) instead of waiting for the 15-minute tick.
-     * Null until the runtime wires it — the coordinator hook below tolerates
-     * that and still performs the dirty backfill.
-     */
-    var onPairingApproved: ((accountChanged: Boolean) -> Unit)? = null
-
-    var pairingCoordinator: PairingCoordinator = PairingCoordinator(
-        client = devicePairingClient,
-        settings = settings,
-    ).also { coordinator ->
-        // Fresh pairing: notify the runtime for an immediate upload pass.
-        // Unsynced local records already carry dirty=1 and upload naturally as
-        // O(delta); markHistoryDirty is decoupled so re-pairing does not force
-        // re-uploading the entire database.
-        // The hook runs on the poller's thread, so this only schedules background
-        // work here.
-        coordinator.onApprovedHook = { _, accountChanged ->
-            jobExecutor.execute {
-                runCatching { onPairingApproved?.invoke(accountChanged) }
-                    .onFailure { error -> Log.w(TAG, "Pairing upload trigger failed", error) }
-            }
-        }
-    }
-        private set
-
-    private object NoOpCloudSink : CloudSink {
-        override suspend fun upsert(
-            table: String,
-            rows: List<Map<String, Any?>>,
-            conflictColumns: List<String>,
-            merge: Boolean
-        ) {
-            Log.i("TelemetryGraph", "Cloud upload skipped (no sink) for $table: ${rows.size} rows")
-        }
-        override suspend fun delete(
-            table: String,
-            vehicleId: String,
-            keys: List<Triple<String, String, Long>>
-        ) {
-            Log.i("TelemetryGraph", "Cloud delete skipped (no sink) for $table: ${keys.size} keys")
-        }
-    }
-
+    val cloudSyncEnabled: Boolean get() = false
 
     val databaseHealthReporter = DatabaseHealthReporter(appContext, database)
     val locationSignalProvider = LocationSignalProvider(appContext)
@@ -659,11 +384,8 @@ internal class TelemetryGraph(
         isCollecting = { state.running }
     )
 
-    val liveTelemetryBleServer = com.timhss.capyenergy.telemetry.ble.LiveTelemetryBleServer(
-        context = appContext,
-        companionDeviceManager = companionDeviceManager,
-        keepBluetoothOn = { settings.keepBluetoothOnEnabled() }
-    )
+    // GeelyTools deviation: Capy Companion support (phone pairing, BLE live
+    // stream, Supabase cloud sync) is excluded — telemetry is strictly local.
 
     init {
         sessionRepository.setFrameWriteBarrier { frameRepository.awaitPendingWrites() }

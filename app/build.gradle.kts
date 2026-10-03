@@ -2,6 +2,7 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
+    id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
 }
 
@@ -21,12 +22,10 @@ fun envProp(name: String): String {
         ?: ""
 }
 
-val supabaseUrl by lazy { envProp("SUPABASE_URL") }
-val supabaseAnonKey by lazy { envProp("SUPABASE_ANON_KEY") }
-val supabaseFunctionsUrl by lazy { envProp("SUPABASE_FUNCTIONS_URL") }
+// GeelyTools deviation: облачная выгрузка (Supabase) исключена из сборки —
+// телеметрия строго локальная, companion-пара и cloud-sync удалены.
 val appUpdateManifestUrl by lazy { envProp("APP_UPDATE_MANIFEST_URL") }
 val chargeControlManifestUrl by lazy { envProp("CHARGE_CONTROL_MANIFEST_URL") }
-val cloudSyncEnabled by lazy { supabaseUrl.isNotBlank() && supabaseAnonKey.isNotBlank() }
 
 // Нативная сборка roadcast_jni требует libroadcast_client.so, который не
 // распространяется с исходниками (собирается из github.com/Timoteohss/roadcast
@@ -50,10 +49,6 @@ android {
         versionCode = 4
         versionName = "1.0.4"
 
-        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
-        buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
-        buildConfigField("String", "SUPABASE_FUNCTIONS_URL", "\"$supabaseFunctionsUrl\"")
-        buildConfigField("Boolean", "CLOUD_SYNC_ENABLED", cloudSyncEnabled.toString())
         buildConfigField("String", "APP_UPDATE_MANIFEST_URL", "\"$appUpdateManifestUrl\"")
         buildConfigField("String", "CHARGE_CONTROL_MANIFEST_URL", "\"$chargeControlManifestUrl\"")
 
@@ -164,6 +159,12 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation(files("libs/sherpa-onnx-v1.12.9-java8.jar"))
+
+    // ===== Flutter-приложение телеметрии (geelytools_telemetry) =====
+    // AAR add-to-app: артефакты создаёт `flutter build aar` в flutter_telemetry/
+    // (см. отчёт миграции). Приносит io.flutter:flutter_embedding_release и
+    // arm64-движок транзитивно.
+    implementation("com.alekseikov.geelytools.geelytools_telemetry:flutter_release:1.0")
 
     // ===== Движок телеметрии (Capy Energy, Apache 2.0) =====
     val roomVersion = "2.8.4"

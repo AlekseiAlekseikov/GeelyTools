@@ -9,6 +9,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import com.example.voiceapp3.AppUpdater
 import com.example.voiceapp3.BuildConfig
+import com.example.voiceapp3.TelemetryPrefsMirror
 import com.example.voiceapp3.VoiceAssistantService
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -47,12 +48,25 @@ private const val PREF_CAR_PAINT = "pref_car_paint"
    чтобы семантика и значение по умолчанию совпадали один в один. */
 private const val PREF_IMMERSIVE = "app_immersive_mode_enabled"
 private const val PREF_LAUNCH_ON_WAKE = "app_launch_on_wake_enabled"
+// Тумблер CarPlay/AA: копия в prefs приложения — синхронная запись на
+// UI-пути (движок пишет через executor; его эхо больше не трогает SET.proj).
+private const val PREF_PROJECTION_BETA = "app_projection_beta_enabled"
 
 class UiBridge(
     private val activity: Activity,
     private val webView: WebView,
-    private val telemetry: TelemetryUiAdapter? = null
+    // GeelyTools deviation: вместо полного WebView-порта телеметрии — тонкий
+    // live-фид движка (навигация/кузов/карточка батареи), см. VehicleLiveAdapter.
+    private val vehicleLive: VehicleLiveAdapter? = null
 ) {
+
+    /**
+     * GeelyTools deviation: встроенный Flutter-экран телеметрии — вкладка
+     * «Телеметрия» показывает его сразу (без промежуточной кнопки), нижний
+     * док шелла остаётся видимым. Задаётся MainActivity после создания.
+     */
+    @Volatile
+    var telemetryHost: TelemetryHostController? = null
 
     /**
      * Stage B7: управление кузовом (капот/багажник) — тот же путь VHAL,
@@ -134,7 +148,7 @@ class UiBridge(
     /** Приложение ушло с экрана — погасить живой поток. */
     fun onAppPaused() {
         appResumed = false
-        telemetry?.stopLive()
+        vehicleLive?.stopLive()
     }
 
     /** Приложение вернулось — возобновить живой поток. */
@@ -142,7 +156,7 @@ class UiBridge(
         appResumed = true
         // Stage B6: карточка батареи живёт в шелле на каждой вкладке,
         // поэтому поток привязан к видимости приложения, а не к вкладке.
-        telemetry?.startLive()
+        vehicleLive?.startLive()
     }
 
     /** Единый канал событий из интерфейса. */
@@ -156,8 +170,8 @@ class UiBridge(
             // живёт с видимостью приложения (Stage B6: карточка батареи
             // в шелле видна на каждой вкладке).
             "telemetry.request", "settings.request" -> {
-                telemetry?.request()
-                if (name == "telemetry.request") telemetry?.startLive()
+                vehicleLive?.request()
+                if (name == "telemetry.request") vehicleLive?.startLive()
                 // CarPlay/AA: страница перезагрузилась и её состояние сброшено —
                 // отдаём последний известный снимок присутствия (как onListen
                 // в мосте capy, который всегда начинает с текущего снимка).
@@ -167,6 +181,48 @@ class UiBridge(
                     // Stage CPv2: и статусы рендер-мостов (перезагрузка страницы)
                     projectionRender?.publishStatuses()
                 }
+            }
+            // GeelyTools deviation: пункт «Телеметрия» и карточка батареи открывают
+            // нативное Flutter-приложение телеметрии (точный порт capy).
+            "telemetry.open" -> {
+                runCatching {
+                    val dest = runCatching {
+                        JsonParser.parseString(data).asJsonObject
+                            .get("destination")?.asString
+                    }.getOrNull()
+                    // Встроенный экран: показать с нужным destination и
+                    // синхронно подсветить вкладку в доке шелла (JS select
+                    // пришлёт tab.change → повторный show() — no-op).
+                    activity.runOnUiThread { telemetryHost?.show(dest) }
+                    pushToUi("ui.selectTab", "{\"id\":\"telemetry\"}")
+                }.onFailure { Log.w(TAG, "telemetry.open failed", it) }
+            }
+            // Действующая палитра шелла (каталог THEMES index.html ↔
+            // AppThemeId capy). JS шлёт при загрузке страницы и каждой смене
+            // темы; значение персистится и зеркалируется во Flutter-prefs
+            // перед стартом движка телеметрии (TelemetryPrefsMirror).
+            "ui.theme" -> {
+                runCatching {
+                    val id = JsonParser.parseString(data).asJsonObject
+                        .get("id")?.asString
+                    if (!id.isNullOrBlank()) {
+                        TelemetryPrefsMirror.rememberShellTheme(activity, id)
+                    }
+                }.onFailure { Log.w(TAG, "ui.theme parse failed", it) }
+            }
+            // Геометрия плавающего дока: JS меряет .tabbar (rect × dpr) и
+            // присылает нижний отступ для встроенного FlutterView — тот же
+            // паттерн, что projectionFrame у CarPlay/AA-оверлеев.
+            "telemetry.frame" -> {
+                runCatching {
+                    val inset = JsonParser.parseString(data).asJsonObject
+                        .get("bottomInset")?.asDouble
+                    if (inset != null && inset.isFinite()) {
+                        activity.runOnUiThread {
+                            telemetryHost?.setDockInsetPx(inset.toInt())
+                        }
+                    }
+                }.onFailure { Log.w(TAG, "telemetry.frame parse failed", it) }
             }
             // Stage B7: капот/багажник из карточки машины. Открывает через
             // BodyControlAdapter (порт TrunkControlHandler); закрытие
@@ -373,114 +429,29 @@ class UiBridge(
                 runCatching {
                     val obj: JsonObject = JsonParser.parseString(data).asJsonObject
                     val id = obj.get("id")?.asString
+                    // Палитра шелла едет прямо в событии — страховка от гонок
+                    // порядка (ui.theme при загрузке мог не успеть/потеряться):
+                    // запоминаем ДО show(), чтобы зеркало взяло свежее значение.
+                    obj.get("theme")?.asString?.let { theme ->
+                        TelemetryPrefsMirror.rememberShellTheme(activity, theme)
+                    }
                     if (id != null) {
                         lastUiTab = id
-                        telemetry?.startLive()
+                        vehicleLive?.startLive()
+                        // Встроенная телеметрия живёт ровно на своей вкладке:
+                        // показ/скрытие — на UI-потоке (onEvent зовётся из
+                        // JavaBridge-треда WebView).
+                        activity.runOnUiThread {
+                            if (id == "telemetry") telemetryHost?.show()
+                            else telemetryHost?.hide()
+                        }
                     }
                 }.onFailure { Log.w(TAG, "tab.change parse failed", it) }
             }
-            "sync.now" -> telemetry?.syncNow()
-            // ── Stage B8–B12: команды телеметрии v2 (порт вызовов capy) ──
-            "charge.target" -> {
-                runCatching {
-                    val obj: JsonObject = JsonParser.parseString(data).asJsonObject
-                    obj.get("percent")?.asNumber?.toInt()?.let { telemetry?.setChargeTarget(it) }
-                }.onFailure { Log.w(TAG, "charge.target parse failed", it) }
-            }
-            "charge.amps" -> {
-                runCatching {
-                    val obj: JsonObject = JsonParser.parseString(data).asJsonObject
-                    obj.get("amps")?.asNumber?.toInt()?.let { telemetry?.setChargeAmps(it) }
-                }.onFailure { Log.w(TAG, "charge.amps parse failed", it) }
-            }
-            "charge.force" -> {
-                runCatching {
-                    val obj: JsonObject = JsonParser.parseString(data).asJsonObject
-                    val on = obj.get("on")?.asBoolean == true
-                    telemetry?.setChargeForce(on)
-                }.onFailure { Log.w(TAG, "charge.force parse failed", it) }
-            }
-            "charge.stop" -> telemetry?.stopCharging()
-            "charge.cost" -> {
-                runCatching {
-                    val obj: JsonObject = JsonParser.parseString(data).asJsonObject
-                    val id = obj.get("sessionId")?.asString
-                    if (id != null) {
-                        val rate = if (obj.has("costPerKwh") && !obj.get("costPerKwh").isJsonNull)
-                            obj.get("costPerKwh").asDouble else null
-                        val paid = if (obj.has("paidAmount") && !obj.get("paidAmount").isJsonNull)
-                            obj.get("paidAmount").asDouble else null
-                        val cur = if (obj.has("currency") && !obj.get("currency").isJsonNull)
-                            obj.get("currency").asString else null
-                        telemetry?.updateChargeCost(id, rate, paid, cur)
-                    }
-                }.onFailure { Log.w(TAG, "charge.cost parse failed", it) }
-            }
-            "charges.merge" -> {
-                runCatching {
-                    val obj: JsonObject = JsonParser.parseString(data).asJsonObject
-                    val ids = obj.get("ids")?.asJsonArray?.mapNotNull { it.takeIf { e -> !e.isJsonNull }?.asString }
-                    if (!ids.isNullOrEmpty()) telemetry?.mergeCharges(ids)
-                }.onFailure { Log.w(TAG, "charges.merge parse failed", it) }
-            }
-            "energy.window" -> {
-                runCatching {
-                    val obj: JsonObject = JsonParser.parseString(data).asJsonObject
-                    val minutes = obj.get("minutes")?.asNumber?.toLong() ?: 60L
-                    val parked = obj.get("parked")?.asBoolean == true
-                    telemetry?.energyWindow(minutes, parked)
-                }.onFailure { Log.w(TAG, "energy.window parse failed", it) }
-            }
-            "history.series" -> {
-                runCatching {
-                    val obj: JsonObject = JsonParser.parseString(data).asJsonObject
-                    obj.get("sessionId")?.asString?.let { telemetry?.sessionSeries(it) }
-                }.onFailure { Log.w(TAG, "history.series parse failed", it) }
-            }
-            "cycle.sessions" -> {
-                runCatching {
-                    val obj: JsonObject = JsonParser.parseString(data).asJsonObject
-                    obj.get("ordinal")?.asNumber?.toLong()?.let { telemetry?.cycleSessions(it) }
-                }.onFailure { Log.w(TAG, "cycle.sessions parse failed", it) }
-            }
-            "places.save" -> {
-                runCatching {
-                    val obj: JsonObject = JsonParser.parseString(data).asJsonObject
-                    val name = obj.get("name")?.takeIf { !it.isJsonNull }?.asString ?: return@runCatching
-                    telemetry?.savePlace(
-                        id = obj.get("id")?.takeIf { !it.isJsonNull }?.asString,
-                        name = name,
-                        lat = obj.get("lat")?.asDouble ?: 0.0,
-                        lon = obj.get("lon")?.asDouble ?: 0.0,
-                        radius = obj.get("radius")?.asDouble ?: 150.0,
-                        autoName = obj.get("auto")?.takeIf { !it.isJsonNull }?.asString
-                    )
-                }.onFailure { Log.w(TAG, "places.save parse failed", it) }
-            }
-            "places.delete" -> {
-                runCatching {
-                    val obj: JsonObject = JsonParser.parseString(data).asJsonObject
-                    obj.get("id")?.asString?.let { telemetry?.deletePlace(it) }
-                }.onFailure { Log.w(TAG, "places.delete parse failed", it) }
-            }
-            // Stage B4: инженерные экраны ⚙ → Разработчик. Данные потекут
-            // обратными пушами lab.schema / lab.base / lab.tick / lab.sensor.
-            "lab.open", "lab.close" -> {
-                runCatching {
-                    val obj: JsonObject = JsonParser.parseString(data).asJsonObject
-                    val screen = obj.get("screen")?.asString
-                    if (screen != null) {
-                        if (name == "lab.open") telemetry?.openLab(screen)
-                        else telemetry?.closeLab(screen)
-                    }
-                }.onFailure { Log.w(TAG, "lab parse failed", it) }
-            }
-            "tool.act" -> {
-                runCatching {
-                    val obj: JsonObject = JsonParser.parseString(data).asJsonObject
-                    obj.get("act")?.asString?.let { telemetry?.action(it) }
-                }.onFailure { Log.w(TAG, "tool.act parse failed", it) }
-            }
+            // GeelyTools deviation: команды WebView-экранов телеметрии
+            // (sync.now, charge.*, charges.merge, energy.window, history.series,
+            // cycle.sessions, places.*, lab.*, tool.act) удалены вместе с
+            // экранами — эти операции выполняет Flutter-приложение телеметрии.
             "settings.change" -> {
                 // Тумблеры ⚙ с data-k: телеметрические ключи пишем в движок,
                 // UI-локальные (cb/rm/...) игнорируем — они остаются в JS.
@@ -499,19 +470,22 @@ class UiBridge(
                                 setImmersive(value)
                             }
                             "wake" -> prefs().edit().putBoolean(PREF_LAUNCH_ON_WAKE, value).apply()
-                            else -> telemetry?.setSetting(key, value)
+                            // Полоса климата: тумблер живёт в JS, но значение
+                            // персистится для зеркала настроек телеметрии
+                            // (TelemetryPrefsMirror → flutter.app_climate_bar_enabled).
+                            "cb" -> prefs().edit().putBoolean("app_climate_bar_enabled", value).apply()
+                            // Тумблер CarPlay/AA (бета): персистентно в prefs
+                            // приложения (источник восстановления appState) +
+                            // в движок — его читают ProjectionPresenceMonitor
+                            // и зеркало настроек Flutter.
+                            "proj" -> {
+                                prefs().edit().putBoolean(PREF_PROJECTION_BETA, value).apply()
+                                vehicleLive?.setProjectionBeta(value)
+                            }
+                            else -> Unit // остальные ключи — локальные для JS
                         }
                     }
                 }.onFailure { Log.w(TAG, "settings.change parse failed", it) }
-            }
-            "settings.apply" -> {
-                runCatching {
-                    val obj: JsonObject = JsonParser.parseString(data).asJsonObject
-                    val key = obj.get("key")?.asString
-                    val value = if (obj.has("value") && !obj.get("value").isJsonNull)
-                        obj.get("value").asDouble else null
-                    if (key != null) telemetry?.applySettings(key, value)
-                }.onFailure { Log.w(TAG, "settings.apply parse failed", it) }
             }
         }
     }
@@ -533,6 +507,13 @@ class UiBridge(
     fun appState(): String = JsonObject().apply {
         addProperty("imm", prefs().getBoolean(PREF_IMMERSIVE, true))
         addProperty("wake", prefs().getBoolean(PREF_LAUNCH_ON_WAKE, false))
+        // Тумблер CarPlay/AA: приоритет — prefs приложения; до первой записи
+        // через шелл — текущее значение движка (мог включить Flutter-экран).
+        val projEngine = runCatching {
+            com.timhss.capyenergy.telemetry.TelemetrySettings(activity.applicationContext)
+                .projectionBetaEnabled()
+        }.getOrDefault(false)
+        addProperty("proj", prefs().getBoolean(PREF_PROJECTION_BETA, projEngine))
     }.toString()
 
     /** Настройки приложения живут в тех же prefs, что и цвет машины. */

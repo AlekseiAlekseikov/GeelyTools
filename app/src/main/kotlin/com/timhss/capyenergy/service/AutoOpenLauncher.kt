@@ -80,6 +80,12 @@ internal class AutoOpenLauncher(
         Log.i(tag, "Opening the app on $destination")
         mainHandler.post {
             try {
+                // GeelyTools deviation: все destination идут через MainActivity —
+                // телеметрия теперь ВСТРОЕНА во вкладку шелла
+                // (TelemetryHostController), и зарядка открывается там же:
+                // handleDestination → ui.destination → JS → telemetry.open.
+                // Отдельная TelemetryActivity больше не запускается, чтобы не
+                // перекрывать плавающий док шелла.
                 val intent = Intent(context, MainActivity::class.java).apply {
                     action = Intent.ACTION_MAIN
                     addCategory(Intent.CATEGORY_LAUNCHER)
